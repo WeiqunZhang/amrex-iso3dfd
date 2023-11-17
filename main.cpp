@@ -9,6 +9,10 @@ static constexpr float dt = 0.002f;
 static constexpr float dxyz = 50.0f;
 static constexpr int kHalfLength = 8;
 
+namespace {
+    int use_array4 = false;
+}
+
 void Initialize (FArrayBox& prev, FArrayBox& next, FArrayBox& vel)
 {
     std::cout << "Initializing ... \n";
@@ -39,20 +43,43 @@ void Iso3dfd (FArrayBox& nextfab, FArrayBox& prevfab, FArrayBox const& velfab,
         auto const& next = (it % 2 == 0) ? nextfab.array() : prevfab.array();
         auto const& prev = (it % 2 == 0) ? prevfab.const_array() : nextfab.const_array();
         auto const& vel = velfab.const_array();
-        ParallelFor(b, [=] AMREX_GPU_DEVICE (int i, int j, int k)
-        {
-            float value = prev(i,j,k) * coeff[0];
+        if (use_array4) {
+            ParallelFor(b, [=] AMREX_GPU_DEVICE (int i, int j, int k)
+            {
+                float value = prev(i,j,k) * coeff[0];
 #pragma unroll(kHalfLength)
-            for (int ir = 1; ir <= kHalfLength; ++ir) {
-                value += coeff[ir] * (prev(i-ir,j   ,k   ) +
-                                      prev(i+ir,j   ,k   ) +
-                                      prev(i   ,j-ir,k   ) +
-                                      prev(i   ,j+ir,k   ) +
-                                      prev(i   ,j   ,k-ir) +
-                                      prev(i   ,j   ,k+ir));
-            }
-            next(i,j,k) = 2.0f * prev(i,j,k) - next(i,j,k) + value*vel(i,j,k);
-        });
+                for (int ir = 1; ir <= kHalfLength; ++ir) {
+                    value += coeff[ir] * (prev(i-ir,j   ,k   ) +
+                                          prev(i+ir,j   ,k   ) +
+                                          prev(i   ,j-ir,k   ) +
+                                          prev(i   ,j+ir,k   ) +
+                                          prev(i   ,j   ,k-ir) +
+                                          prev(i   ,j   ,k+ir));
+                }
+                next(i,j,k) = 2.0f * prev(i,j,k) - next(i,j,k) + value*vel(i,j,k);
+            });
+        } else {
+            auto* pn = next.ptr(0,0,0);
+            auto const* pp = prev.ptr(0,0,0);
+            auto const* pv = vel.ptr(0,0,0);
+            auto jstride = next.jstride;
+            auto kstride = next.kstride;
+            ParallelFor(b, [=] AMREX_GPU_DEVICE (int i, int j, int k)
+            {
+                auto offset = i + j*jstride + k*kstride;
+                float value = pp[offset] * coeff[0];
+#pragma unroll(kHalfLength)
+                for (int ir = 1; ir <= kHalfLength; ++ir) {
+                    value += coeff[ir] * (pp[offset+ir] +
+                                          pp[offset-ir] +
+                                          pp[offset+ir*jstride] +
+                                          pp[offset-ir*jstride] +
+                                          pp[offset+ir*kstride] +
+                                          pp[offset-ir*kstride]);
+                }
+                pn[offset] = 2.0f * pp[offset] - pn[offset] + value*pv[offset];
+            });
+        }
     }
 }
 
@@ -84,6 +111,7 @@ void main_main ()
         ParmParse pp;
         pp.query("grid_sizes", grid_sizes);
         pp.query("iterations", num_iterations);
+        pp.query("use_array4", use_array4);
     }
 
     Box domain(IntVect(0),IntVect(grid_sizes[0]-1,
