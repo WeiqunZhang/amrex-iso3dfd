@@ -1,4 +1,4 @@
-AMREX_HOME ?= ../../amrex
+AMREX_HOME ?= ../amrex
 
 DEBUG	= FALSE
 
@@ -6,15 +6,17 @@ DIM	= 3
 
 COMP    = gcc
 
+PRECISION = FLOAT
+
 USE_MPI   = FALSE
 USE_OMP   = FALSE
 USE_CUDA  = FALSE
 USE_HIP   = FALSE
-USE_SYCL  = FALSE
+USE_SYCL  = TRUE
+
+SYCL_AOT = TRUE
 
 BL_NO_FORT = TRUE
-
-TINY_PROFILE = FALSE
 
 include $(AMREX_HOME)/Tools/GNUMake/Make.defs
 
