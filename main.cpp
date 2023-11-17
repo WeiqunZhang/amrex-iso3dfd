@@ -167,6 +167,9 @@ void main_main ()
     Initialize(prev, next, vel);
     Gpu::streamSynchronize();
 
+    Iso3dfd(next, prev, vel, coeff_dv, 2); // warm up
+    Gpu::streamSynchronize();
+
     auto t0 = amrex::second();
     Iso3dfd(next, prev, vel, coeff_dv, num_iterations);
     Gpu::streamSynchronize();
