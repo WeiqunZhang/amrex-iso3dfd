@@ -11,6 +11,7 @@ static constexpr int kHalfLength = 8;
 
 namespace {
     int use_array4 = false;
+    int use_array4_hack = false;
 }
 
 void Initialize (FArrayBox& prev, FArrayBox& next, FArrayBox& vel)
@@ -44,20 +45,40 @@ void Iso3dfd (FArrayBox& nextfab, FArrayBox& prevfab, FArrayBox const& velfab,
         auto const& prev = (it % 2 == 0) ? prevfab.const_array() : nextfab.const_array();
         auto const& vel = velfab.const_array();
         if (use_array4) {
-            ParallelFor(b, [=] AMREX_GPU_DEVICE (int i, int j, int k)
-            {
-                float value = prev(i,j,k) * coeff[0];
+            if (use_array4_hack) {
+                ParallelFor(b, [=] AMREX_GPU_DEVICE (int i, int j, int k)
+                {
+                    auto *pn = next.ptr(i,j,k);
+                    auto const* pp = prev.ptr(i,j,k);
+                    auto const* pv = vel.ptr(i,j,k);
+                    float value = (*pp) * coeff[0];
 #pragma unroll(kHalfLength)
-                for (int ir = 1; ir <= kHalfLength; ++ir) {
-                    value += coeff[ir] * (prev(i-ir,j   ,k   ) +
-                                          prev(i+ir,j   ,k   ) +
-                                          prev(i   ,j-ir,k   ) +
-                                          prev(i   ,j+ir,k   ) +
-                                          prev(i   ,j   ,k-ir) +
-                                          prev(i   ,j   ,k+ir));
-                }
-                next(i,j,k) = 2.0f * prev(i,j,k) - next(i,j,k) + value*vel(i,j,k);
-            });
+                    for (int ir = 1; ir <= kHalfLength; ++ir) {
+                        value += coeff[ir] * (pp[ ir] +
+                                              pp[-ir] +
+                                              pp[ ir*prev.jstride] +
+                                              pp[-ir*prev.jstride] +
+                                              pp[ ir*prev.kstride] +
+                                              pp[-ir*prev.kstride]);
+                    }
+                    *pn = 2.0f * (*pp) - (*pn) + value*(*pv);
+                });
+            } else {
+                ParallelFor(b, [=] AMREX_GPU_DEVICE (int i, int j, int k)
+                {
+                    float value = prev(i,j,k) * coeff[0];
+#pragma unroll(kHalfLength)
+                    for (int ir = 1; ir <= kHalfLength; ++ir) {
+                        value += coeff[ir] * (prev(i-ir,j   ,k   ) +
+                                              prev(i+ir,j   ,k   ) +
+                                              prev(i   ,j-ir,k   ) +
+                                              prev(i   ,j+ir,k   ) +
+                                              prev(i   ,j   ,k-ir) +
+                                              prev(i   ,j   ,k+ir));
+                    }
+                    next(i,j,k) = 2.0f * prev(i,j,k) - next(i,j,k) + value*vel(i,j,k);
+                });
+            }
         } else {
             auto* pn = next.ptr(0,0,0);
             auto const* pp = prev.ptr(0,0,0);
@@ -112,6 +133,7 @@ void main_main ()
         pp.query("grid_sizes", grid_sizes);
         pp.query("iterations", num_iterations);
         pp.query("use_array4", use_array4);
+        pp.query("use_array4_hack", use_array4_hack);
     }
 
     Box domain(IntVect(0),IntVect(grid_sizes[0]-1,
