@@ -30,9 +30,16 @@ void Initialize (FArrayBox& prev, FArrayBox& next, FArrayBox& vel)
     for (int s = 5; s >= 0; s--) {
         Box b(IntVect(nx/4-s  , ny/4-s  , nz/2-s  ),
               IntVect(nx/4+s-1, ny/4+s+1, nz/2+s-1));
-        vel.template setVal<RunOn::Device>(val, b);
+        prev.template setVal<RunOn::Device>(val, b);
         val *= 10.f;
     }
+    amrex::Print() << "Initial min, max, 1-norm, 2-norm, inf-norm, sum: "
+                   << prev.template min<RunOn::Device>() << ", "
+                   << prev.template max<RunOn::Device>() << ", "
+                   << prev.template norm<RunOn::Device>(1) << ", "
+                   << prev.template norm<RunOn::Device>(2) << ", "
+                   << prev.template norm<RunOn::Device>(0) << ", "
+                   << prev.template sum<RunOn::Device>(0) << "\n";
 }
 
 void Iso3dfd (FArrayBox& nextfab, FArrayBox& prevfab, FArrayBox const& velfab,
@@ -176,6 +183,14 @@ void main_main ()
     auto t1 = amrex::second();
 
     PrintStats(t1-t0, domain, num_iterations);
+
+    amrex::Print() << "Final min, max, 1-norm, 2-norm, inf-norm, sum: "
+                   << next.template min<RunOn::Device>() << ", "
+                   << next.template max<RunOn::Device>() << ", "
+                   << next.template norm<RunOn::Device>(1) << ", "
+                   << next.template norm<RunOn::Device>(2) << ", "
+                   << next.template norm<RunOn::Device>(0) << ", "
+                   << next.template sum<RunOn::Device>(0) << "\n";
 }
 
 int main(int argc, char* argv[])
